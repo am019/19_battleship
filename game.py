@@ -6,50 +6,72 @@ class Battleship:
     def __init__(self):
         self.player = Board()
         self.enemy = Board()
-        self.ai = AI()
+        self.ai = AI(Board.SIZE)
         self._setup()
 
     def _setup(self):
         self.player.place_ship({(1, 1), (1, 2), (1, 3)})
+        self.player.place_ship({(3, 0), (4, 0)})
+        self.player.place_ship({(4, 3), (4, 4)})
         self.enemy.place_ship({(2, 2), (2, 3), (2, 4)})
+        self.enemy.place_ship({(0, 0), (1, 0)})
+        self.enemy.place_ship({(4, 4), (5, 4)})
 
     def show(self):
-        print("\nYour shots are coordinates like 2,3.")
-        print("Ship cells remaining:", len(self.enemy.ships - self.player.shots))
+        print("\nYour shots are coordinates like 2,3. Enter q to quit.")
+        print("Enemy ship cells remaining:", self.enemy.remaining())
+
+    def _parse(self, raw):
+        parts = raw.split(",")
+        if len(parts) != 2:
+            print("Use row,col.")
+            return None
+        try:
+            r, c = int(parts[0]), int(parts[1])
+        except ValueError:
+            print("Use row,col.")
+            return None
+        pos = (r - 1, c - 1)
+        if not self.enemy.in_bounds(pos):
+            print("Outside board.")
+            return None
+        return pos
+
+    def _report(self, who, pos, result):
+        coord = f"{pos[0] + 1},{pos[1] + 1}"
+        text = {"hit": "HIT!", "miss": "MISS!", "sunk": "HIT! Ship sunk!"}[result]
+        print(f"{who} fired at {coord}: {text}")
 
     def run(self):
         print("Battleship")
         while True:
             self.show()
-            raw = input("> ").strip().lower()
-            if raw == "q":
-                return
             try:
-                r, c = map(int, raw.split(","))
-                pos = (r - 1, c - 1)
-            except ValueError:
-                print("Use row,col.")
+                raw = input("> ").strip().lower()
+            except EOFError:
+                return
+            if raw in ("q", "quit"):
+                print("Goodbye.")
+                return
+            pos = self._parse(raw)
+            if pos is None:
                 continue
-            if not (0 <= pos[0] < Board.SIZE and 0 <= pos[1] < Board.SIZE):
-                print("Outside board.")
-                continue
-            if pos in self.player.shots:
+            result = self.enemy.fire(pos)
+            if result == "repeat":
                 print("Already fired there.")
                 continue
-            print("HIT!" if self.enemy.fire(pos) else "MISS!")
+            self._report("You", pos, result)
             if self.enemy.all_sunk():
                 print("You sank the fleet.")
                 return
 
             ai_pos = self.ai.choose()
-
-            # representation consistent through the whole flow.
-            try:
-                ar, ac = map(int, ai_pos.split(","))
-                player_pos = (ar, ac)
-            except ValueError:
-                player_pos = None
-            if player_pos is not None:
-                print("AI fired at", ai_pos)
-                if player_pos in self.player.ships:
-                    print("AI scored a hit.")
+            if ai_pos is None:
+                print("AI has no cells left to fire at.")
+                return
+            ai_result = self.player.fire(ai_pos)
+            self.ai.record(ai_pos, ai_result)
+            self._report("AI", ai_pos, ai_result)
+            if self.player.all_sunk():
+                print("The AI sank your fleet.")
+                return
